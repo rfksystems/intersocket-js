@@ -1,0 +1,26 @@
+{
+    "plugins": [
+        "./node_modules/jsdoc-export-default-interop/dist/index"
+    ],
+    "encoding": "utf8",
+    "recurse": true,
+    "opts": {
+        "destination": "./jsdoc/"
+    },
+    "source": {
+        "include": "src/",
+        "includePattern": ".+\\.js$"
+    },
+    "sourceType": "module",
+    "tags": {
+        "allowUnknownTags": true,
+        "dictionaries": [
+            "jsdoc",
+            "closure"
+        ]
+    },
+    "templates": {
+        "cleverLinks": false,
+        "monospaceLinks": false
+    }
+}
