@@ -16,7 +16,9 @@ export default class SubscriberRegistry {
     }
 
     subscribersFor(topic) {
-        return this._holder.filter(it => topic === it.topic);
+        return this._holder
+            .filter(it => topic === it.topic)
+            .map(it => it.consumer);
     }
 
     subscribe(topic, consumer) {

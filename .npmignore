@@ -3,3 +3,4 @@ jsdoc.json
 yarn.lock
 *.md
 !README.md
+.idea

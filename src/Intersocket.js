@@ -6,19 +6,18 @@ import Configuration from './Configuration.js';
 import SubscriberRegistry from './SubscriberRegistry.js';
 import MultiConsumer from './MultiConsumer.js';
 
-let _instanceId = 0;
-let _transportId = 0;
-let _messageId = 0;
+const UUIDv4 = require('uuid').v4;
 
 /**
  * New intersocket instance
+ * @TODO intersocket now connects immediately when instance is created. This is not optimal. It should connect either on method call or first message.
  */
 export default class Intersocket {
     /**
      * @param {Object} options Configuration parameters
      */
     constructor(options) {
-        this._id = ++_instanceId;
+        this._id = UUIDv4();
         this._configuration = new Configuration(options || {});
         this._logger = new Logger();
         this._buffer = new MessageBuffer(this._logger);
@@ -45,6 +44,7 @@ export default class Intersocket {
         this._onTransportErrorConsumer = new MultiConsumer();
         this._onTransportServerErrorConsumer = new MultiConsumer();
         this._onTransportBinaryMessageConsumer = new MultiConsumer();
+        this._onTransportBinaryAttachmentConsumer = new MultiConsumer();
         this._onTransportForeignProtocolConsumer = new MultiConsumer();
         this._onTransportUnknownMessageTypeConsumer = new MultiConsumer();
         this._onTransportPlatformChangeConsumer = new MultiConsumer();
@@ -80,7 +80,7 @@ export default class Intersocket {
             return undefined;
         }
 
-        const frame = new MessageFrame(++_messageId, topic, this);
+        const frame = new MessageFrame(UUIDv4(), topic, this);
         this._buffer._enqueue(frame);
         return frame;
     }
@@ -377,6 +377,18 @@ export default class Intersocket {
     }
 
     /**
+     * // TODO
+     * @returns {Intersocket} current instance of {@link Intersocket}
+     */
+    onBinaryAttachment(consumer) {
+        if (this._isDisposed) {
+            return this;
+        }
+        this._onTransportBinaryAttachmentConsumer.add(consumer);
+        return this;
+    }
+
+    /**
      *
      * @param {onForeignProtocolConsumer} consumer
      * @returns {Intersocket} current instance of {@link Intersocket}
@@ -450,7 +462,7 @@ export default class Intersocket {
      */
     _createTransport(intersocket, configuration) {
         const transport = new SocketTransport(
-            ++_transportId,
+            UUIDv4(),
             intersocket._logger,
             configuration
         );
@@ -465,6 +477,7 @@ export default class Intersocket {
         transport._onError(this._onTransportError.bind(this));
         transport._onServerError(this._onTransportServerError.bind(this));
         transport._onBinaryMessage(this._onTransportBinaryMessage.bind(this));
+        transport._onBinaryAttachment(this._onTransportBinaryAttachment.bind(this));
         transport._onForeignProtocol(this._onTransportForeignProtocol.bind(this));
         transport._onUnknownMessageType(this._onTransportUnknownMessageType.bind(this));
         transport._onPlatformChange(this._onTransportPlatformChange.bind(this));
@@ -487,8 +500,15 @@ export default class Intersocket {
         this._buffer.forEachTimed(it => it._completeTimed());
         this._buffer.forEachAcknowledgedTimed(it => it._completeAcknowledgedTimed());
 
+        if (!this._transport._isReady()) {
+            this._buffer.removeOnlineOnly();
+        }
+
         if (this._transport._isReady()) {
             this._buffer.forEachWithLostTransport(this._transport, it => {
+
+                this._logger.debug("Rescheduling message for re-delivery", it);
+
                 it._reschedule();
                 this._onMessageRescheduledConsumer.consume(it);
             });
@@ -565,7 +585,6 @@ export default class Intersocket {
             return;
         }
 
-
         const frame = this._buffer.frameWithId(id);
 
         if (!frame) {
@@ -573,7 +592,7 @@ export default class Intersocket {
             return;
         }
 
-        frame._complete(payload, event);
+        frame._setResponsePayload(payload);
         this._onTransportMessageResponseConsumer.consume(frame, payload, event);
     }
 
@@ -627,7 +646,7 @@ export default class Intersocket {
         setTimeout(() => {
             this._setState('reconnecting');
             this._transport = this._createTransport(this, this._configuration);
-        }, 50); // TODO
+        }, this._configuration.reconnectInterval);
 
         this._onTransportClosedConsumer.consume(event);
     }
@@ -678,6 +697,29 @@ export default class Intersocket {
             return;
         }
         this._onTransportBinaryMessageConsumer.consume(event);
+    }
+
+    /**
+     * @param id
+     * @param attachment
+     * @param event
+     * @private
+     */
+    _onTransportBinaryAttachment(id, attachment, event) {
+        if (this._isDisposed) {
+            return;
+        }
+
+        const frame = this._buffer.frameWithId(id);
+
+        if (!frame) {
+            this._onLostMessageResponseConsumer.consume(id, payload, event);
+            return;
+        }
+
+        frame._setResponseAttachment(attachment);
+
+        this._onTransportBinaryAttachmentConsumer.consume(id, attachment, event);
     }
 
     /**

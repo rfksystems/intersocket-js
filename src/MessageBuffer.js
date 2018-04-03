@@ -143,6 +143,21 @@ export default class MessageBuffer {
      *
      * @returns {MessageBuffer}
      */
+    removeOnlineOnly() {
+        const toRemove = this._holder.filter(it => true === it._discardIfOffline);
+
+        if (toRemove.length > 0) {
+            this._logger.trace('Removing online-only frames from buffer', toRemove);
+        }
+
+        this.removeFrames(toRemove);
+        return this;
+    }
+
+    /**
+     *
+     * @returns {MessageBuffer}
+     */
     removeAcknowledgedNotifications() {
         const toRemove = this._holder.filter(it => true === it._isNotification && null !== it._acknowledgedAt);
         if (toRemove.length > 0) {

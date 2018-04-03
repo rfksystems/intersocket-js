@@ -15,6 +15,7 @@ const TYPE_INT = {
     S2C_ERROR: 18,
     S2C_MESSAGE_ERROR: 19,
     C2S_SYNCHRONIZE_TOPICS: 20,
+    S2C_BINARY_ATTACHMENT: 21,
 };
 
 const TYPE_STRING = {
@@ -29,6 +30,7 @@ const TYPE_STRING = {
     S2C_ERROR: TYPE_INT.S2C_ERROR.toString(10),
     S2C_MESSAGE_ERROR: TYPE_INT.S2C_MESSAGE_ERROR.toString(10),
     C2S_SYNCHRONIZE_TOPICS: TYPE_INT.C2S_SYNCHRONIZE_TOPICS.toString(10),
+    S2C_BINARY_ATTACHMENT: TYPE_INT.S2C_BINARY_ATTACHMENT.toString(10),
 };
 
 /**
@@ -51,6 +53,7 @@ class SocketTransport {
         this._onErrorConsumer = new MultiConsumer();
         this._onServerErrorConsumer = new MultiConsumer();
         this._onBinaryMessageConsumer = new MultiConsumer();
+        this._onBinaryAttachmentConsumer = new MultiConsumer();
         this._onForeignProtocolConsumer = new MultiConsumer();
         this._onUnknownMessageTypeConsumer = new MultiConsumer();
         this._onPlatformChangeConsumer = new MultiConsumer();
@@ -85,6 +88,16 @@ class SocketTransport {
         });
     }
 
+    static _blobSplice(startingByte, endingByte, blob) {
+        if (blob.webkitSlice) {
+            return blob.webkitSlice(startingByte, endingByte);
+        } else if (blob.mozSlice) {
+            return blob.mozSlice(startingByte, endingByte);
+        } else {
+            return blob.slice(startingByte, endingByte);
+        }
+    }
+
     _createSocket() {
         const socket = new WebSocket(this._configuration.url);
 
@@ -108,8 +121,35 @@ class SocketTransport {
     _onSocketMessage(event) {
         this._onMessageConsumer.consume(event);
 
+
         if (typeof event.data !== 'string') {
             this._onBinaryMessageConsumer.consume(event);
+
+            if (event.data instanceof Blob) {
+                const ifHeader = SocketTransport._blobSplice(0, 5, event.data);
+
+                const magicHeaderReader = new FileReader();
+                magicHeaderReader.onload = () => {
+                    if (magicHeaderReader.result !== MAGIC_ID_STRING + TYPE_STRING.S2C_BINARY_ATTACHMENT) {
+                        return;
+                    }
+
+                    const ifMessageId = SocketTransport._blobSplice(5, 41, event.data);
+                    const messageIdReader = new FileReader();
+
+                    messageIdReader.onload = () => {
+                        const messageId = messageIdReader.result;
+                        const attachment = SocketTransport._blobSplice(41, undefined, event.data);
+
+                        this._onBinaryAttachmentConsumer.consume(messageId, attachment, event);
+                    };
+
+                    messageIdReader.readAsText(ifMessageId, 'ASCII');
+
+                };
+                magicHeaderReader.readAsText(ifHeader, 'ASCII');
+            }
+
             return;
         }
 
@@ -190,7 +230,7 @@ class SocketTransport {
         }
 
         this._socket.send(SocketTransport._encodeFrame(frame));
-        this._logger.debug('Sent frame', SocketTransport._encodeFrame(frame), this._handshakeResponse);
+        this._logger.debug('Sent frame', frame);
 
         return this;
     }
@@ -242,6 +282,11 @@ class SocketTransport {
 
     _onBinaryMessage(consumer) {
         this._onBinaryMessageConsumer.add(consumer);
+        return this;
+    }
+
+    _onBinaryAttachment(consumer) {
+        this._onBinaryAttachmentConsumer.add(consumer);
         return this;
     }
 

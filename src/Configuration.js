@@ -1,14 +1,8 @@
 export default class Configuration {
     constructor(options) {
-        // TODO intervals, topics etc
         this.tickInterval = options.tickInterval ? options.tickInterval : 5;
+        this.reconnectInterval = options.reconnectInterval ? options.reconnectInterval : 1000;
         this.url = options.url ? options.url : null;
-        this.subscribers = {
-            // 'a': [
-            //     function() {
-            //         console.log(arguments);
-            //     }
-            // ]
-        };
+        this.subscribers = options.subscribers ? options.subscribers : [];
     }
 }

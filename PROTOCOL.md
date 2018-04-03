@@ -60,6 +60,13 @@ Message frame sent from server to client immediately after `C2S_HANDSHAKE` is re
 
 ###### C2S_MESSAGE (12)
 
+Message frame sent from client to server for indicated topic with optional payload. Is either query request
+or notification.
+
+`id` <string|mandatory>: Globally unique, random identity of this message.
+`topic` <string|mandatory>: Topic of the message
+`payload` <any|mandatory>: 
+
 ###### S2C_ACK (13)
 
 ###### S2C_MESSAGE (14)

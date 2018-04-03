@@ -23,8 +23,13 @@ export default class MessageFrame {
         this._isFinalized = false;
         this._isReady = false;
         this._isNotification = false;
+        this._discardIfOffline = false;
+        this._ensureAttachment = false;
 
         this._payload = null;
+
+        this._responseAttachment = undefined;
+        this._responsePayload = undefined;
 
         this._completeHandlers = [];
         this._errorHandlers = [];
@@ -37,6 +42,12 @@ export default class MessageFrame {
     static _handle(handlers, frame, arg, event) {
         for (const handler of handlers) {
             handler(arg, frame, event);
+        }
+    }
+
+    static _handleComplete(handlers, frame, payload, attachment, event) {
+        for (const handler of handlers) {
+            handler(payload, frame, event, attachment);
         }
     }
 
@@ -77,6 +88,16 @@ export default class MessageFrame {
 
     whenAcknowledgedTimed(onTimed) {
         this._acknowledgedTimedHandlers.push(onTimed);
+        return this;
+    }
+
+    onlyIfConnected() {
+        this._discardIfOffline = true;
+        return this;
+    }
+
+    expectAttachment() {
+        this._ensureAttachment = true;
         return this;
     }
 
@@ -125,9 +146,42 @@ export default class MessageFrame {
         this._acknowledgedAt = null;
         this._responseAt = null;
         this._transport = null;
+        this._responsePayload = undefined;
+        this._responseAttachment = undefined;
     }
 
-    _complete(responsePayload, event) {
+    _setResponsePayload(responsePayload) {
+        if (!this._canHandle()) {
+            return;
+        }
+
+        this._responsePayload = responsePayload;
+
+        if (this._isComplete()) {
+            this._finalize();
+        }
+    }
+
+    _setResponseAttachment(attachment) {
+        if (!this._canHandle() || !this._ensureAttachment) {
+            return;
+        }
+
+        this._responseAttachment = attachment;
+
+        if (this._isComplete()) {
+            this._finalize();
+        }
+    }
+
+    _isComplete() {
+        return (!this._ensureAttachment && typeof this._responsePayload !== 'undefined')
+            || (this._ensureAttachment
+                && typeof this._responseAttachment !== 'undefined'
+                && typeof this._responsePayload !== 'undefined');
+    }
+
+    _finalize() {
         if (!this._canHandle()) {
             return;
         }
@@ -135,9 +189,9 @@ export default class MessageFrame {
         this._isFinalized = true;
 
         try {
-            MessageFrame._handle(this._completeHandlers, this, responsePayload, event);
+            MessageFrame._handleComplete(this._completeHandlers, this, this._responsePayload, this._responseAttachment, event);
         } finally {
-            MessageFrame._handle(this._finallyHandlers, this, responsePayload, event);
+            MessageFrame._handleComplete(this._finallyHandlers, this, this._responsePayload, this._responseAttachment, event);
         }
     }
 
@@ -145,6 +199,7 @@ export default class MessageFrame {
         if (!this._canHandle()) {
             return;
         }
+
         this._isFinalized = true;
 
         try {

@@ -9,7 +9,7 @@ export default class Logger {
         this._handler = !!handler ? handler : (level, args) => {
             switch (level) {
                 case 'trace':
-                    console.trace(...args);
+                    console.debug(...args);
                     break;
                 case 'debug':
                     console.debug(...args);
