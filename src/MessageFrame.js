@@ -30,6 +30,7 @@ export default class MessageFrame {
 
         this._responseAttachment = undefined;
         this._responsePayload = undefined;
+        this._responseEvent = undefined;
 
         this._completeHandlers = [];
         this._errorHandlers = [];
@@ -147,15 +148,17 @@ export default class MessageFrame {
         this._responseAt = null;
         this._transport = null;
         this._responsePayload = undefined;
+        this._responseEvent = undefined;
         this._responseAttachment = undefined;
     }
 
-    _setResponsePayload(responsePayload) {
+    _setResponsePayload(responsePayload, event) {
         if (!this._canHandle()) {
             return;
         }
 
         this._responsePayload = responsePayload;
+        this._responseEvent = event;
 
         if (this._isComplete()) {
             this._finalize();
@@ -189,9 +192,21 @@ export default class MessageFrame {
         this._isFinalized = true;
 
         try {
-            MessageFrame._handleComplete(this._completeHandlers, this, this._responsePayload, this._responseAttachment, event);
+            MessageFrame._handleComplete(
+                this._completeHandlers,
+                this,
+                this._responsePayload,
+                this._responseAttachment,
+                this._responseEvent
+            );
         } finally {
-            MessageFrame._handleComplete(this._finallyHandlers, this, this._responsePayload, this._responseAttachment, event);
+            MessageFrame._handleComplete(
+                this._finallyHandlers,
+                this,
+                this._responsePayload,
+                this._responseAttachment,
+                this._responseEvent
+            );
         }
     }
 

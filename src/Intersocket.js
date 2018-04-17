@@ -592,7 +592,7 @@ export default class Intersocket {
             return;
         }
 
-        frame._setResponsePayload(payload);
+        frame._setResponsePayload(payload, event);
         this._onTransportMessageResponseConsumer.consume(frame, payload, event);
     }
 

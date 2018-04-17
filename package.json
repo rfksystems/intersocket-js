@@ -1,6 +1,6 @@
 {
   "name": "@rfksystems/intersocket",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Browser client for Intersocket protocol compatible servers",
   "module": "src/index.js",
   "scripts": {
