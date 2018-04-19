@@ -5,6 +5,7 @@ import Logger from './Logger.js';
 import Configuration from './Configuration.js';
 import SubscriberRegistry from './SubscriberRegistry.js';
 import MultiConsumer from './MultiConsumer.js';
+import OperationsBuffer from "./OperationsBuffer";
 
 const UUIDv4 = require('uuid').v4;
 
@@ -21,8 +22,8 @@ export default class Intersocket {
         this._configuration = new Configuration(options || {});
         this._logger = new Logger();
         this._buffer = new MessageBuffer(this._logger);
+        this._operations = new OperationsBuffer();
         this._subscribers = new SubscriberRegistry(this._configuration);
-        this._transport = this._createTransport(this, this._configuration);
 
         this._isDisposed = false;
         this._state = 'new';
@@ -61,6 +62,10 @@ export default class Intersocket {
         }
 
         this._monitor = setInterval(this._tick.bind(this), this._configuration.tickInterval);
+    }
+
+    start() {
+        this._transport = this._createTransport(this, this._configuration);
     }
 
     /**
@@ -135,8 +140,11 @@ export default class Intersocket {
             return this;
         }
 
-        this._subscribers.subscribe(topic, consumer);
-        this._transport._synchronizeTopics(this._subscribers.getKnownTopics());
+        this._operations.append(() => {
+            this._subscribers.subscribe(topic, consumer);
+            this._transport._synchronizeTopics(this._subscribers.getKnownTopics());
+        });
+
         return this;
     }
 
@@ -148,8 +156,11 @@ export default class Intersocket {
      * @returns {Intersocket} current instance of {@link Intersocket}
      */
     unsubscribe(topic, consumer) {
-        this._subscribers.unsubscribe(topic, consumer);
-        this._transport._synchronizeTopics(this._subscribers.getKnownTopics());
+        this._operations.append(() => {
+            this._subscribers.unsubscribe(topic, consumer);
+            this._transport._synchronizeTopics(this._subscribers.getKnownTopics());
+        });
+
         return this;
     }
 
@@ -500,11 +511,14 @@ export default class Intersocket {
         this._buffer.forEachTimed(it => it._completeTimed());
         this._buffer.forEachAcknowledgedTimed(it => it._completeAcknowledgedTimed());
 
-        if (!this._transport._isReady()) {
+        if (!this._transport || !this._transport._isReady()) {
             this._buffer.removeOnlineOnly();
         }
 
-        if (this._transport._isReady()) {
+        if (this._transport && this._transport._isReady()) {
+            this._operations.forEach(operation => operation());
+            this._operations.clear();
+
             this._buffer.forEachWithLostTransport(this._transport, it => {
 
                 this._logger.debug("Rescheduling message for re-delivery", it);
